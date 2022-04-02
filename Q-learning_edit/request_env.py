@@ -119,7 +119,7 @@ class RequestEnv:
     def step(self, action):
         # debug
         print('action: ' + str(action))
-        print('t:'+str(t))
+        print('t:' + str(t))
         reward = self.get_reward(action)
         # 环境更新
         # sim_env更新
@@ -175,15 +175,18 @@ class RequestEnv:
         # active_request_group_by_remaining_time_list 剩余时间要推移
         for i in range(len(self.active_request_group_by_remaining_time_list)):
             for j in range(len(self.active_request_group_by_remaining_time_list[i])):
-                self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] = self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] - 1
+                self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] = \
+                    self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] - 1
+
+        for i in range(len(self.active_request_group_by_remaining_time_list)):
+            for active_request in self.active_request_group_by_remaining_time_list[i][:]:
                 # 过期请求
-                if self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] == 0:
-                    self.fail_request_list.append(self.active_request_group_by_remaining_time_list[i][j])
-                    del self.active_request_group_by_remaining_time_list[i][j]
-                if self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
-                    self.active_request_group_by_remaining_time_list[i - 1].append(
-                        self.active_request_group_by_remaining_time_list[i][j])
-                    del self.active_request_group_by_remaining_time_list[i][j]
+                if active_request[REMAINING_TIME_INDEX] == 0:
+                    self.fail_request_list.append(list(active_request))
+                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
+                if active_request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
+                    self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
+                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
 
         episode_done = False
         # 与真实环境交互的话这里需要更改
