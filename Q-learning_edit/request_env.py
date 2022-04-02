@@ -32,7 +32,7 @@ WAIT_TIME_INDEX = 3
 NEW_ARRIVE_REQUEST_IN_DIC = []
 
 FRESH_TIME = 1
-NEED_EVALUATE_ENV_CORRECT = False
+NEED_EVALUATE_ENV_CORRECT = True
 
 # t t的长度为TIME_UNIT
 t = 0
@@ -94,8 +94,8 @@ class RequestEnv:
         self.n_actions = len(self.action_space)
         self.action_space_dimension = ACTION_SPACE_DIMENSION
         '''
-        [剩余时间为(0,1s)的请求列表,剩余时间为[1s,2s)...,剩余时间为[4s,5s)的请求列表]
-        active_request_list是中间变量，随时间推移会有remainingTime的改变
+        [剩余时间为[0,1s)的请求列表,剩余时间为[1s,2s)...,剩余时间为[4s,5s)的请求列表]
+        active_request_group_by_remaining_time_list是中间变量，随时间推移会有remainingTime的改变
         '''
         self.active_request_group_by_remaining_time_list = []
         for i in range(STATE_DIMENSION - 1):
@@ -117,9 +117,11 @@ class RequestEnv:
 
     # 返回奖励值和下一个状态
     def step(self, action):
-        # debug
+        '''
+        debug
         print('action: ' + str(action))
-        print('t:'+str(t))
+        print('t:' + str(t))
+        '''
         reward = self.get_reward(action)
         # 环境更新
         # sim_env更新
@@ -132,11 +134,10 @@ class RequestEnv:
         # 验证环境正确性
         if done and NEED_EVALUATE_ENV_CORRECT:
             print('环境正确性:' + str(self.is_correct()))
-        # 输出提交结果
-        if done:
-            self.save_success_request()
+        '''
         # debug
         print('active_request_list:' + str(self.active_request_group_by_remaining_time_list))
+        '''
         return self.state_record, reward, done
 
     def is_correct(self):
@@ -154,6 +155,13 @@ class RequestEnv:
         all_request_id_list.sort()
         all_request_id_after_episode_list.sort()
         return all_request_id_after_episode_list == all_request_id_list
+
+    def get_success_rate(self):
+        all_request = []
+        for request_in_dic in NEW_ARRIVE_REQUEST_IN_DIC:
+            all_request.append(request_in_dic[REQUEST_ID_INDEX])
+        all_request_num = all_request.__len__()
+        return self.end_request_list.__len__() / all_request_num
 
     def save_success_request(self):
         # end_request[request_id, arrive_time, rtl, wait_time]
@@ -175,15 +183,18 @@ class RequestEnv:
         # active_request_group_by_remaining_time_list 剩余时间要推移
         for i in range(len(self.active_request_group_by_remaining_time_list)):
             for j in range(len(self.active_request_group_by_remaining_time_list[i])):
-                self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] = self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] - 1
+                self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] = \
+                    self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] - 1
+
+        for i in range(len(self.active_request_group_by_remaining_time_list)):
+            for active_request in self.active_request_group_by_remaining_time_list[i][:]:
                 # 过期请求
-                if self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] == 0:
-                    self.fail_request_list.append(self.active_request_group_by_remaining_time_list[i][j])
-                    del self.active_request_group_by_remaining_time_list[i][j]
-                if self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
-                    self.active_request_group_by_remaining_time_list[i - 1].append(
-                        self.active_request_group_by_remaining_time_list[i][j])
-                    del self.active_request_group_by_remaining_time_list[i][j]
+                if active_request[REMAINING_TIME_INDEX] == 0:
+                    self.fail_request_list.append(list(active_request))
+                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
+                if active_request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
+                    self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
+                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
 
         episode_done = False
         # 与真实环境交互的话这里需要更改
@@ -207,12 +218,13 @@ class RequestEnv:
     def update_sim_env(self, action):
         if action != 0:
             # 确保 action 有mask 不会选择队列为空的剩余时间队列
-            time_stamp = time.time()
-            '''
-            todo
-            选择在剩余时间(A-1,A]中最小的
-            '''
-            submit_index = np.random.choice(self.active_request_group_by_remaining_time_list[action - 1].__len__())
+            # time_stamp = time.time()
+            submit_index = 0
+            min_remaining_time = float("inf")
+            for i in range(len(self.active_request_group_by_remaining_time_list[action - 1])):
+                if self.active_request_group_by_remaining_time_list[action - 1][i][REMAINING_TIME_INDEX] < min_remaining_time:
+                    min_remaining_time = self.active_request_group_by_remaining_time_list[action - 1][i][REMAINING_TIME_INDEX]
+                    submit_index = i
             end_request = list(self.active_request_group_by_remaining_time_list[action - 1][submit_index])
             # 把提交的任务从active_request_list中删除
             del self.active_request_group_by_remaining_time_list[action - 1][submit_index]
