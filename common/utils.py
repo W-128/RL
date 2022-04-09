@@ -115,3 +115,26 @@ def del_empty_dir(*paths):
         for dir in dirs:
             if not os.listdir(os.path.join(path, dir)):
                 os.removedirs(os.path.join(path, dir))
+
+def concurrent_request_num_per_second_list_to_concurrent_request_num(concurrent_request_num_per_second_list):
+    import uuid
+    import csv
+    # 先造只有rtl1 和rtl3
+    rtl_list = [1, 3]
+
+    request_list = []
+    for i in range(len(concurrent_request_num_per_second_list)):
+        request_sum_the_second = concurrent_request_num_per_second_list[i]
+        for j in range(request_sum_the_second):
+                # [request_id, arrive_time, rtl]
+                request = []
+                request.append(str(uuid.uuid1()))
+                request.append(i)
+                request.append(np.random.choice(rtl_list))
+                request_list.append(request)
+
+    headers = ['request_id', 'arrive_time', 'rtl']
+    with open('concurrent_request_num.csv', 'w', newline='')as f:
+        f_csv = csv.writer(f)
+        f_csv.writerow(headers)
+        f_csv.writerows(request_list)

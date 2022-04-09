@@ -5,17 +5,18 @@ import pandas as pd
 import time
 import csv
 from common.utils import make_dir
+from common.get_data import get_arrive_time_request_dic
 import os
 
-# t=100ms
-TIME_UNIT = 0.1
+# t=1000ms
+TIME_UNIT = 1
 TIME_UNIT_IN_ON_SECOND = int(1 / TIME_UNIT)
 # 引擎能承受的单位时间最大并发量
 THRESHOLD = int(40 / TIME_UNIT_IN_ON_SECOND)
 
 # 状态向量的维数/rtl的级别个数+1
-STATE_DIMENSION = 6
-# state=(阈值,剩余时间为1的请求个数,...,剩余时间为5的请求个数)
+STATE_DIMENSION = 7
+# state=(剩余时间为0的请求个数,...,剩余时间为5的请求个数,阈值)
 # 动作空间维数 == 状态向量的维数
 ACTION_SPACE_DIMENSION = STATE_DIMENSION
 
@@ -29,7 +30,6 @@ ARRIVE_TIME_INDEX = 1
 RTL_INDEX = 2
 REMAINING_TIME_INDEX = 3
 WAIT_TIME_INDEX = 3
-NEW_ARRIVE_REQUEST_IN_DIC = []
 
 FRESH_TIME = 1
 NEED_EVALUATE_ENV_CORRECT = True
@@ -64,65 +64,43 @@ def SIM_ENV_USE_TIME_to_zero():
     SIM_ENV_USE_TIME = 0
 
 
-'''
-将数据集转换为arriveTime_request_dic
-arriveTime_request_dic:
-key=arriveTime
-value=arriveTime为key的request_in_dic列表
-request_in_dic的形式为[request_id, arrive_time, rtl]
-'''
-filename = 'concurrent_request_num.csv'
-data = pd.read_csv(filename, header=0)
-for i in range(0, len(data)):
-    request_in_dic = [data.loc[i, 'request_id'], data.loc[i, 'arrive_time'], data.loc[i, 'rtl']]
-    NEW_ARRIVE_REQUEST_IN_DIC.append(request_in_dic)
-
-arriveTime_request_dic = {}
-for request_in_dic in NEW_ARRIVE_REQUEST_IN_DIC:
-    if request_in_dic[ARRIVE_TIME_INDEX] in arriveTime_request_dic:
-        arriveTime_request_dic[request_in_dic[ARRIVE_TIME_INDEX]].append(request_in_dic)
-    else:
-        request_list = [request_in_dic]
-        arriveTime_request_dic[request_in_dic[ARRIVE_TIME_INDEX]] = request_list
-
-
 class RequestEnv:
     def __init__(self):
+        # [0,1,...,5,null]
         self.action_space = []
-        for i in range(STATE_DIMENSION):
+        for i in range(STATE_DIMENSION - 1):
             self.action_space.append(str(i))
-        self.n_actions = len(self.action_space)
-        self.action_space_dimension = ACTION_SPACE_DIMENSION
+        self.action_space.append('null')
+        self.action_space_dimension = len(self.action_space)
         '''
-        [剩余时间为[0,1s)的请求列表,剩余时间为[1s,2s)...,剩余时间为[4s,5s)的请求列表]
+        [剩余时间为0s的请求列表,剩余时间为1s...,剩余时间为5s的请求列表]
         active_request_group_by_remaining_time_list是中间变量，随时间推移会有remainingTime的改变
         '''
         self.active_request_group_by_remaining_time_list = []
         for i in range(STATE_DIMENSION - 1):
             self.active_request_group_by_remaining_time_list.append([])
         self.state_record = []
-        self.end_request_list = []
+        self.success_request_list = []
         self.fail_request_list = []
         self.simulate_time = 0
         self.episode = 0
+        '''
+        arriveTime_request_dic:
+        key=arriveTime
+        value=arriveTime为key的request_in_dic列表
+        request_in_dic的形式为[request_id, arrive_time, rtl]
+        '''
+        self.new_arrive_request_in_dic, self.arriveTime_request_dic = get_arrive_time_request_dic(ARRIVE_TIME_INDEX)
         self.end_request_result_path = curr_path + '/end_request/' + curr_time + '/'
         make_dir(self.end_request_result_path)
 
-    def get_not_avail_actions(self):
-        not_avail_actions = []
-        for i in range(1, len(self.state_record)):
-            if self.state_record[i] == 0:
-                not_avail_actions.append(i)
-        return not_avail_actions
-
     # 返回奖励值和下一个状态
     def step(self, action):
-        '''
-        debug
-        print('action: ' + str(action))
-        print('t:' + str(t))
-        '''
-        reward = self.get_reward(action)
+
+        # debug
+        # print('action: ' + str(action))
+        # print('t:' + str(t))
+
         # 环境更新
         # sim_env更新
         done = self.update_sim_env(action)
@@ -130,71 +108,31 @@ class RequestEnv:
         # 最后一个模拟状态的更新值要和新到来的合并成S_{t+1}发送给agent
         if SIM_ENV_USE_TIME == THRESHOLD:
             SIM_ENV_USE_TIME_to_zero()
-        done = self.update_env()
+            t_add_one()
+            done = self.update_env()
+        reward = self.get_reward(action)
+
         # 验证环境正确性
         if done and NEED_EVALUATE_ENV_CORRECT:
             print('环境正确性:' + str(self.is_correct()))
-        '''
+
         # debug
-        print('active_request_list:' + str(self.active_request_group_by_remaining_time_list))
-        '''
+        # print('active_request_list:' + str(self.active_request_group_by_remaining_time_list))
+
         return self.state_record, reward, done
 
-    def is_correct(self):
-        all_request_id_list = []
-        for request_in_dic in NEW_ARRIVE_REQUEST_IN_DIC:
-            all_request_id_list.append(request_in_dic[REQUEST_ID_INDEX])
-        all_request_after_episode_list = []
-        all_request_id_after_episode_list = []
-        for request in self.fail_request_list:
-            all_request_after_episode_list.append(request)
-            all_request_id_after_episode_list.append(request[REQUEST_ID_INDEX])
-        for request in self.end_request_list:
-            all_request_after_episode_list.append(request)
-            all_request_id_after_episode_list.append(request[REQUEST_ID_INDEX])
-        all_request_id_list.sort()
-        all_request_id_after_episode_list.sort()
-        return all_request_id_after_episode_list == all_request_id_list
-
-    def get_success_rate(self):
-        all_request = []
-        for request_in_dic in NEW_ARRIVE_REQUEST_IN_DIC:
-            all_request.append(request_in_dic[REQUEST_ID_INDEX])
-        all_request_num = all_request.__len__()
-        return self.end_request_list.__len__() / all_request_num
-
-    def save_success_request(self):
-        # end_request[request_id, arrive_time, rtl, wait_time]
-        headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
-        with open(self.end_request_result_path + 'end_request' + str(self.episode) + '.csv', 'w', newline='')as f:
-            f_csv = csv.writer(f)
-            f_csv.writerow(headers)
-            f_csv.writerows(self.end_request_list)
-
-    # request_list -> state
-    def active_request_group_by_remaining_time_list_to_state(self):
-        state = [THRESHOLD]
-        for active_request_group_by_remaining_time in self.active_request_group_by_remaining_time_list:
-            state.append(len(active_request_group_by_remaining_time))
-
-        self.state_record = state
-
     def update_env(self):
-        # active_request_group_by_remaining_time_list 剩余时间要推移
-        for i in range(len(self.active_request_group_by_remaining_time_list)):
-            for j in range(len(self.active_request_group_by_remaining_time_list[i])):
-                self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] = \
-                    self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] - 1
+        # remaining_time==0且还留在active_request_group_by_remaining_time_list中的请求此时失败
+        for active_request in self.active_request_group_by_remaining_time_list[0]:
+            self.fail_request_list.append(list(active_request))
+        self.active_request_group_by_remaining_time_list[0] = []
 
-        for i in range(len(self.active_request_group_by_remaining_time_list)):
-            for active_request in self.active_request_group_by_remaining_time_list[i][:]:
-                # 过期请求
-                if active_request[REMAINING_TIME_INDEX] == 0:
-                    self.fail_request_list.append(list(active_request))
-                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
-                if active_request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
-                    self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
-                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
+        # active_request_group_by_remaining_time_list 剩余时间要推移
+        for i in range(1, self.active_request_group_by_remaining_time_list.__len__()):
+            self.active_request_group_by_remaining_time_list[i - 1] = []
+            for active_request in self.active_request_group_by_remaining_time_list[i]:
+                active_request[REMAINING_TIME_INDEX] = active_request[REMAINING_TIME_INDEX] - 1
+                self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
 
         episode_done = False
         # 与真实环境交互的话这里需要更改
@@ -207,30 +145,27 @@ class RequestEnv:
         self.active_request_group_by_remaining_time_list_to_state()
         # 判断是否结束
         remaining_request_is_done = True
-        for i in range(1, len(self.state_record)):
+        for i in range(0, len(self.state_record) - 1):
             if self.state_record[i] != 0:
                 remaining_request_is_done = False
-        if t > np.max(list(arriveTime_request_dic.keys())) and remaining_request_is_done:
+        if t > np.max(list(self.arriveTime_request_dic.keys())) and remaining_request_is_done:
             episode_done = True
         # time.sleep(FRESH_TIME)
         return episode_done
 
     def update_sim_env(self, action):
-        if action != 0:
+        # action_space的最后一位是null
+        if action != self.action_space_dimension - 1:
             # 确保 action 有mask 不会选择队列为空的剩余时间队列
             # time_stamp = time.time()
-            submit_index = 0
-            min_remaining_time = float("inf")
-            for i in range(len(self.active_request_group_by_remaining_time_list[action - 1])):
-                if self.active_request_group_by_remaining_time_list[action - 1][i][REMAINING_TIME_INDEX] < min_remaining_time:
-                    min_remaining_time = self.active_request_group_by_remaining_time_list[action - 1][i][REMAINING_TIME_INDEX]
-                    submit_index = i
-            end_request = list(self.active_request_group_by_remaining_time_list[action - 1][submit_index])
+            submit_index = np.random.choice(self.active_request_group_by_remaining_time_list[action].__len__())
+            end_request = list(self.active_request_group_by_remaining_time_list[action][submit_index])
             # 把提交的任务从active_request_list中删除
-            del self.active_request_group_by_remaining_time_list[action - 1][submit_index]
+            del self.active_request_group_by_remaining_time_list[action][submit_index]
             end_request[WAIT_TIME_INDEX] = t - end_request[ARRIVE_TIME_INDEX]
-            self.end_request_list.append(end_request)
-            self.state_record[action] = self.state_record[action] - 1
+            self.success_request_list.append(end_request)
+            # 更新状态
+            self.active_request_group_by_remaining_time_list_to_state()
         return False
 
     def get_reward(self, action):
@@ -243,13 +178,52 @@ class RequestEnv:
                 reward = -(self.state_record[1] + action - 1)
         return reward
 
+    # request_list -> state
+    def active_request_group_by_remaining_time_list_to_state(self):
+        state = []
+        for active_request_group_by_remaining_time in self.active_request_group_by_remaining_time_list:
+            state.append(len(active_request_group_by_remaining_time))
+        state.append(THRESHOLD)
+        self.state_record = state
+
+    def is_correct(self):
+        all_request_id_list = []
+        for request_in_dic in self.new_arrive_request_in_dic:
+            all_request_id_list.append(request_in_dic[REQUEST_ID_INDEX])
+        all_request_after_episode_list = []
+        all_request_id_after_episode_list = []
+        for request in self.fail_request_list:
+            all_request_after_episode_list.append(request)
+            all_request_id_after_episode_list.append(request[REQUEST_ID_INDEX])
+        for request in self.success_request_list:
+            all_request_after_episode_list.append(request)
+            all_request_id_after_episode_list.append(request[REQUEST_ID_INDEX])
+        all_request_id_list.sort()
+        all_request_id_after_episode_list.sort()
+        return all_request_id_after_episode_list == all_request_id_list
+
+    def get_success_rate(self):
+        all_request = []
+        for request_in_dic in self.new_arrive_request_in_dic:
+            all_request.append(request_in_dic[REQUEST_ID_INDEX])
+        all_request_num = all_request.__len__()
+        return self.success_request_list.__len__() / all_request_num
+
+    def save_success_request(self):
+        # end_request[request_id, arrive_time, rtl, wait_time]
+        headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
+        with open(self.end_request_result_path + 'end_request' + str(self.episode) + '.csv', 'w', newline='')as f:
+            f_csv = csv.writer(f)
+            f_csv.writerow(headers)
+            f_csv.writerows(self.success_request_list)
+
     # 现在用t来表示，真实环境中收集[t-1,t)到来的请求直接给出
     def get_new_arrive_request_list(self):
         now_new_arrive_request_list = []
         for i in range(STATE_DIMENSION - 1):
             now_new_arrive_request_list.append([])
-        if t in arriveTime_request_dic:
-            for request_in_dic in arriveTime_request_dic[t]:
+        if t in self.arriveTime_request_dic:
+            for request_in_dic in self.arriveTime_request_dic[t]:
                 # request_in_dic的形式为[request_id, arrive_time, rtl]
                 # request [request_id, arrive_time, rtl, remaining_time]
                 # request_in_dic 转为request
@@ -257,7 +231,6 @@ class RequestEnv:
                 # 刚加进缓冲时 remaining_time=rtl
                 request.append(request_in_dic[RTL_INDEX])
                 now_new_arrive_request_list[request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND].append(request)
-        t_add_one()
         return now_new_arrive_request_list
 
     #   初始状态
@@ -265,7 +238,7 @@ class RequestEnv:
         self.episode = episode
         self.simulate_time = 0
         t_to_zero()
-        self.end_request_list = []
+        self.success_request_list = []
         self.fail_request_list = []
         self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list()
         self.active_request_group_by_remaining_time_list_to_state()
@@ -276,3 +249,13 @@ class RequestEnv:
         for active_request in self.active_request_group_by_remaining_time_list:
             sum += active_request.__len__()
         return sum
+
+    def get_not_avail_actions(self):
+        not_avail_actions = []
+        for i in range(len(self.state_record) - 1):
+            if self.state_record[i] == 0:
+                not_avail_actions.append(i)
+        return not_avail_actions
+
+
+env = RequestEnv()

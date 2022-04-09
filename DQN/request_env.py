@@ -95,7 +95,7 @@ class RequestEnv:
         self.action_space_dimension = ACTION_SPACE_DIMENSION
         self.state_dimension = STATE_DIMENSION
         '''
-        [剩余时间为(0,1s)的请求列表,剩余时间为[1s,2s)...,剩余时间为[4s,5s)的请求列表]
+        [剩余时间为[0,1s)的请求列表,剩余时间为[1s,2s)...,剩余时间为[4s,5s)的请求列表]
         active_request_group_by_remaining_time_list是中间变量，随时间推移会有remainingTime的改变
         '''
         self.active_request_group_by_remaining_time_list = []

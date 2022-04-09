@@ -11,7 +11,7 @@ import torch
 
 curr_path = os.path.dirname(os.path.abspath(__file__))  # 当前文件所在绝对路径
 curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")  # 获取当前时间
-algo_name = 'DQN'  # 算法名称
+algo_name = 'Q-learning'  # 算法名称
 env_name = 'request_env'  # 环境名称
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 检测GPU
 
@@ -55,7 +55,7 @@ def env_agent_config(cfg):
         agent : 智能体
     '''
     env = RequestEnv()
-    agent = QLearningTable(list(range(env.n_actions)), cfg)
+    agent = QLearningTable(list(range(env.action_space_dimension)), cfg)
     return env, agent
 
 

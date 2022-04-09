@@ -56,7 +56,7 @@ def env_agent_config(cfg):
     '''
     env = RequestEnv()
     # state_dim = env.observation_space.n  # 状态维度
-    # action_dim = env.action_space.n  # 动作维度
+    # action_dim = env.action_list.n  # 动作维度
     agent = QLearningTable()
     return env, agent
 

@@ -1,4 +1,6 @@
 import time
+
+
 def train(cfg, env, agent):
     print('开始训练！')
     print(f'环境:{cfg.env_name}, 算法:{cfg.algo_name}')
@@ -6,7 +8,7 @@ def train(cfg, env, agent):
     ma_rewards = []  # 记录滑动平均奖励
     success_rate = []
     for i_ep in range(cfg.train_eps):
-        start_time=time.time()
+        start_time = time.time()
         ep_reward = 0  # 记录每个回合的奖励
         state = env.reset(i_ep)  # 重置环境,即开始新的回合
         while True:
@@ -28,8 +30,8 @@ def train(cfg, env, agent):
             ma_rewards.append(ma_rewards[-1] * 0.9 + ep_reward * 0.1)
         else:
             ma_rewards.append(ep_reward)
-        end_time=time.time()
-        print("回合数：{}/{}，奖励{:.1f}，耗时{:.1f}s".format(i_ep + 1, cfg.train_eps, ep_reward,end_time-start_time))
+        end_time = time.time()
+        print("回合数：{}/{}，奖励{:.1f}，耗时{:.1f}s".format(i_ep + 1, cfg.train_eps, ep_reward, end_time - start_time))
     print('完成训练！')
     return rewards, ma_rewards, success_rate
 
