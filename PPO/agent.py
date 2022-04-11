@@ -15,6 +15,7 @@ import torch
 import torch.optim as optim
 from PPO.model import Actor, Critic
 from PPO.memory import PPOMemory
+import torch.nn as nn
 
 
 class PPO:
@@ -37,13 +38,11 @@ class PPO:
         dist = self.actor(state)
         value = self.critic(state)
         action = dist.sample()
-        probs = torch.squeeze(dist.log_prob(action)).item()
-        if self.continuous:
-            action = torch.tanh(action)
-        else:
-            action = torch.squeeze(action).item()
+        # 各个动作值和为1
+        action = nn.Softmax(dim=1)(action)
+        logprob_a = dist.log_prob(action).cpu().detach().numpy().flatten()
         value = torch.squeeze(value).item()
-        return action, probs, value
+        return action, logprob_a, value
 
     def update(self):
         for _ in range(self.n_epochs):

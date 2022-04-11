@@ -23,7 +23,7 @@ ACTION_SPACE_DIMENSION = STATE_DIMENSION
 # 现在先 直接从文件读取
 
 # request=[request_id, arrive_time, rtl, remaining_time]
-# end_request[request_id, arrive_time, rtl, wait_time]
+# success_request_list[request_id, arrive_time, rtl, wait_time]
 REQUEST_ID_INDEX = 0
 ARRIVE_TIME_INDEX = 1
 RTL_INDEX = 2
@@ -106,7 +106,7 @@ class RequestEnv:
         self.fail_request_list = []
         self.simulate_time = 0
         self.episode = 0
-        self.end_request_result_path = curr_path + '/end_request/' + curr_time + '/'
+        self.end_request_result_path = curr_path + '/success_request_list/' + curr_time + '/'
         make_dir(self.end_request_result_path)
 
     def get_not_avail_actions(self):
@@ -165,9 +165,9 @@ class RequestEnv:
         return self.end_request_list.__len__() / all_request_num
 
     def save_success_request(self):
-        # end_request[request_id, arrive_time, rtl, wait_time]
+        # success_request_list[request_id, arrive_time, rtl, wait_time]
         headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
-        with open(self.end_request_result_path + 'end_request' + str(self.episode) + '.csv', 'w', newline='')as f:
+        with open(self.end_request_result_path + 'success_request_list' + str(self.episode) + '.csv', 'w', newline='')as f:
             f_csv = csv.writer(f)
             f_csv.writerow(headers)
             f_csv.writerows(self.end_request_list)

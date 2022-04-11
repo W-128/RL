@@ -16,3 +16,4 @@ def test(cfg, env, agent):
     print('成功率：{:.1f}%'.format(env.get_success_rate() * 100))
     print('超供量：{:.1f}'.format(env.get_more_provision()))
     print('完成测试！')
+    return env.get_success_request()

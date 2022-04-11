@@ -11,34 +11,47 @@ Environment:
 '''
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
+import torch
+import torch.nn.functional as F
+from torch.distributions import Beta, Normal
+
+
 class Actor(nn.Module):
-    def __init__(self,state_dim, action_dim,
-            hidden_dim):
+    def __init__(self, state_dim, action_dim,
+                 hidden_dim):
         super(Actor, self).__init__()
 
         self.actor = nn.Sequential(
-                nn.Linear(state_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, action_dim),
-                nn.Softmax(dim=-1)
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
         )
+        self.mu_head = nn.Linear(hidden_dim, action_dim)
+        self.sigma_head = nn.Linear(hidden_dim, action_dim)
+
+
     def forward(self, state):
-        dist = self.actor(state)
-        dist = Categorical(dist)
+        out_put = self.actor(state)
+        mu = torch.sigmoid(self.mu_head(out_put))
+        sigma = F.softplus(self.sigma_head(out_put))
+        dist = Normal(mu, sigma)
         return dist
 
+
 class Critic(nn.Module):
-    def __init__(self, state_dim,hidden_dim):
+    def __init__(self, state_dim, hidden_dim):
         super(Critic, self).__init__()
         self.critic = nn.Sequential(
-                nn.Linear(state_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, 1)
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
         )
+
     def forward(self, state):
         value = self.critic(state)
         return value

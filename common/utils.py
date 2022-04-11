@@ -72,9 +72,31 @@ def plot_success_rate(success_rate, plot_cfg, tag='train'):
     plt.show()
 
 
+def plot_waiting_time_and_require_time(success_request_list, waiting_time_index, rtl_index, plot_cfg, tag='train'):
+    sns.set()
+    fig = plt.figure()
+    fig.set_figwidth(100)
+    plt.title("more provision {} for {}".format(
+        plot_cfg.algo_name, plot_cfg.env_name))
+    plt.xlabel('success request')
+    rtl_dic = {}
+    for success_request in success_request_list:
+        if success_request[rtl_index] not in rtl_dic:
+            rtl_dic[success_request[rtl_index]] = []
+            rtl_dic[success_request[rtl_index]].append(success_request[waiting_time_index])
+        else:
+            rtl_dic[success_request[rtl_index]].append(success_request[waiting_time_index])
+    import random
+    for rtl in rtl_dic:
+        plt.plot(random.sample(rtl_dic[rtl], 100), label=rtl)
+    plt.legend()
+    if plot_cfg.save:
+        plt.savefig(plot_cfg.result_path + "{}_more_provision".format(tag))
+    plt.show()
+
+
 def plot_losses(losses, algo="DQN", save=True, path='./'):
     sns.set()
-    plt.figure()
     plt.title("loss curve of {}".format(algo))
     plt.xlabel('epsiodes')
     plt.plot(losses, label='rewards')
@@ -116,6 +138,7 @@ def del_empty_dir(*paths):
             if not os.listdir(os.path.join(path, dir)):
                 os.removedirs(os.path.join(path, dir))
 
+
 def concurrent_request_num_per_second_list_to_concurrent_request_num(concurrent_request_num_per_second_list):
     import uuid
     import csv
@@ -126,12 +149,12 @@ def concurrent_request_num_per_second_list_to_concurrent_request_num(concurrent_
     for i in range(len(concurrent_request_num_per_second_list)):
         request_sum_the_second = concurrent_request_num_per_second_list[i]
         for j in range(request_sum_the_second):
-                # [request_id, arrive_time, rtl]
-                request = []
-                request.append(str(uuid.uuid1()))
-                request.append(i)
-                request.append(np.random.choice(rtl_list))
-                request_list.append(request)
+            # [request_id, arrive_time, rtl]
+            request = []
+            request.append(str(uuid.uuid1()))
+            request.append(i)
+            request.append(np.random.choice(rtl_list))
+            request_list.append(request)
 
     headers = ['request_id', 'arrive_time', 'rtl']
     with open('concurrent_request_num.csv', 'w', newline='')as f:

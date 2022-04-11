@@ -16,7 +16,7 @@ def train(cfg, env, agent):
             not_avail_action = env.get_not_avail_actions()
             # print('observation:' + str(state))
             # print('not_available_action' + str(not_avail_action))
-            action = agent.choose_action(state, not_avail_action)  # 根据算法选择一个动作
+            action = agent.choose_action(state)  # 根据算法选择一个动作
             # print('action:' + str(action))
             next_state, reward, done = env.step(action)  # 与环境进行一次动作交互
             agent.learn(state, action, reward, next_state, done)  # Q学习算法更新

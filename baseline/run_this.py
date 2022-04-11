@@ -2,7 +2,7 @@ import numpy as np
 from common.get_data import get_arrive_time_request_dic
 
 # request=[request_id, arrive_time, rtl, remaining_time]
-# end_request[request_id, arrive_time, rtl, wait_time]
+# success_request_list[request_id, arrive_time, rtl, wait_time]
 REQUEST_ID_INDEX = 0
 ARRIVE_TIME_INDEX = 1
 RTL_INDEX = 2

@@ -14,7 +14,7 @@ PADDING_ELEMENT = 0
 # 实时用的话，这个地方无法事先写好，只能每秒来append
 # 现在先 直接从文件读取
 # request=[request_id, arrive_time, rtl, remaining_time]
-# end_request[request_id, arrive_time, rtl, submit_time]
+# success_request_list[request_id, arrive_time, rtl, submit_time]
 REQUEST_ID_INDEX = 0
 ARRIVE_TIME_INDEX = 1
 RTL_INDEX = 2
