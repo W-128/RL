@@ -1,12 +1,17 @@
+import sys
+import os
 import datetime
-
 import numpy as np
 import pandas as pd
 import time
 import csv
-from common.utils import make_dir
-from common.get_data import get_arrive_time_request_dic
-import os
+
+curPath = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(curPath + '/my_common')
+
+import common
+from my_common.utils import make_dir
+from my_common.get_data import get_arrive_time_request_dic
 import math
 import torch.nn as nn
 import torch
@@ -45,8 +50,8 @@ def t_to_zero():
 
 
 class RequestEnvNoSim:
+
     def __init__(self):
-        self.max_step = 2 ** 10
         self.if_discrete = False
         # action需要归一化转为概率
         self.action_need_softmax = True
@@ -87,13 +92,17 @@ class RequestEnvNoSim:
         value=arriveTime为key的request_in_dic列表
         request_in_dic的形式为[request_id, arrive_time, rtl]
         '''
-        self.new_arrive_request_in_dic, self.arriveTime_request_dic = get_arrive_time_request_dic(ARRIVE_TIME_INDEX)
+        self.new_arrive_request_in_dic, self.arriveTime_request_dic = get_arrive_time_request_dic(
+            ARRIVE_TIME_INDEX)
+        self.max_step = len(
+            self.new_arrive_request_in_dic
+        ) + self.state_dim  # 每个episode的最大步数（就是从 env.reset() 开始到 env.step()返回 done=True 的步数上限）
         # self.end_request_result_path = curr_path + '/success_request_list/' + curr_time + '/'
         # make_dir(self.end_request_result_path)
 
     # 返回奖励值和下一个状态
     def step(self, action):
-        # action归一化转为概率在转为数量
+        # action归一化转为概率再转为数量
         if self.action_need_softmax:
             action = torch.Tensor(action)
             action = nn.Softmax(dim=0)(action)
@@ -124,29 +133,39 @@ class RequestEnvNoSim:
         # action[提交剩余时间为0的请求数量, 提交剩余时间为1的请求数量, ,不提交的数量]
         # 确保 action 有mask 不会选择队列为空的剩余时间队列
         for remaining_time in range(self.action_dim - 1):
-            for j in range(action[remaining_time]):
+            for j in range(int(action[remaining_time])):
                 # time_stamp = time.time()
                 submit_index = np.random.choice(
-                    self.active_request_group_by_remaining_time_list[remaining_time].__len__())
-                end_request = list(self.active_request_group_by_remaining_time_list[remaining_time][submit_index])
+                    self.active_request_group_by_remaining_time_list[
+                        remaining_time].__len__())
+                end_request = list(
+                    self.active_request_group_by_remaining_time_list[
+                        remaining_time][submit_index])
                 # 把提交的任务从active_request_list中删除
-                del self.active_request_group_by_remaining_time_list[remaining_time][submit_index]
-                end_request[WAIT_TIME_INDEX] = t - end_request[ARRIVE_TIME_INDEX]
+                del self.active_request_group_by_remaining_time_list[
+                    remaining_time][submit_index]
+                end_request[
+                    WAIT_TIME_INDEX] = t - end_request[ARRIVE_TIME_INDEX]
                 self.success_request_list.append(end_request)
 
         t_add_one()
 
         # remaining_time==0且还留在active_request_group_by_remaining_time_list中的请求此时失败
-        for active_request in self.active_request_group_by_remaining_time_list[0]:
+        for active_request in self.active_request_group_by_remaining_time_list[
+                0]:
             self.fail_request_list.append(list(active_request))
         self.active_request_group_by_remaining_time_list[0] = []
 
         # active_request_group_by_remaining_time_list 剩余时间要推移
-        for i in range(1, self.active_request_group_by_remaining_time_list.__len__()):
+        for i in range(
+                1, self.active_request_group_by_remaining_time_list.__len__()):
             self.active_request_group_by_remaining_time_list[i - 1] = []
-            for active_request in self.active_request_group_by_remaining_time_list[i]:
-                active_request[REMAINING_TIME_INDEX] = active_request[REMAINING_TIME_INDEX] - 1
-                self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
+            for active_request in self.active_request_group_by_remaining_time_list[
+                    i]:
+                active_request[REMAINING_TIME_INDEX] = active_request[
+                    REMAINING_TIME_INDEX] - 1
+                self.active_request_group_by_remaining_time_list[i - 1].append(
+                    list(active_request))
 
         episode_done = False
         # 与真实环境交互的话这里需要更改
@@ -162,7 +181,8 @@ class RequestEnvNoSim:
         for i in range(0, len(self.state_record) - 1):
             if self.state_record[i] != 0:
                 remaining_request_is_done = False
-        if t > np.max(list(self.arriveTime_request_dic.keys())) and remaining_request_is_done:
+        if t > np.max(list(self.arriveTime_request_dic.keys())
+                      ) and remaining_request_is_done:
             episode_done = True
         # time.sleep(FRESH_TIME)
         return episode_done
@@ -174,7 +194,8 @@ class RequestEnvNoSim:
         is_valid_action = False
         # 判断是否是违法动作
         for index in range(len(action) - 1):
-            if action[index] > len(self.active_request_group_by_remaining_time_list[index]):
+            if action[index] > len(
+                    self.active_request_group_by_remaining_time_list[index]):
                 is_valid_action = True
                 # debug
                 self.invalid_action_times += 1
@@ -182,19 +203,39 @@ class RequestEnvNoSim:
         # 不可行动作置为最接近invalid_action的合法动作
         if is_valid_action:
             for index in range(len(action) - 1):
-                if action[index] > len(self.active_request_group_by_remaining_time_list[index]):
-                    edited_action[-1] += len(self.active_request_group_by_remaining_time_list[index]) - action[index]
-                    edited_action[index] = len(self.active_request_group_by_remaining_time_list[index])
+                if action[index] > len(
+                        self.active_request_group_by_remaining_time_list[index]
+                ):
+                    edited_action[-1] += len(
+                        self.active_request_group_by_remaining_time_list[index]
+                    ) - action[index]
+                    edited_action[index] = len(
+                        self.active_request_group_by_remaining_time_list[index]
+                    )
             more_submit_sum = edited_action[-1] - action[-1]
-            penalty3 = (more_submit_sum / self.threshold) * self.invalid_action_penalty
+            # 如果remaining_time==0的请求有未执行的 并且需要优化invalid_action
+            if self.invalid_action_optim and edited_action[0] < len(
+                    self.active_request_group_by_remaining_time_list[0]):
+                can_edit_num = min(
+                    more_submit_sum,
+                    (len(self.active_request_group_by_remaining_time_list[0]) -
+                     edited_action[0]))
+                edited_action[-1] -= can_edit_num
+                edited_action[0] += can_edit_num
+                more_submit_sum = edited_action[-1] - action[-1]
+            penalty3 = (more_submit_sum /
+                        self.threshold) * self.invalid_action_penalty
+
         # action[提交剩余时间为0的请求数量, 提交剩余时间为1的请求数量, ,不提交的数量]
         reward_list = []
         for i in range(len(edited_action) - 1):
             reward_list.append(edited_action[i] * np.power(self.beta, i))
         reward = np.sum(reward_list) / self.threshold
         fail_num = 0
-        if edited_action[0] < len(self.active_request_group_by_remaining_time_list[0]):
-            fail_num = len(self.active_request_group_by_remaining_time_list[0]) - edited_action[0]
+        if edited_action[0] < len(
+                self.active_request_group_by_remaining_time_list[0]):
+            fail_num = len(self.active_request_group_by_remaining_time_list[0]
+                           ) - edited_action[0]
         penalty1 = self.c * (min(fail_num, self.threshold) / self.threshold)
         return reward + penalty1 + penalty3, edited_action
 
@@ -249,7 +290,9 @@ class RequestEnvNoSim:
                 request = list(request_in_dic)
                 # 刚加进缓冲时 remaining_time=rtl
                 request.append(request_in_dic[RTL_INDEX])
-                now_new_arrive_request_list[request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND].append(request)
+                now_new_arrive_request_list[request[REMAINING_TIME_INDEX] //
+                                            TIME_UNIT_IN_ON_SECOND].append(
+                                                request)
         return now_new_arrive_request_list
 
     #   初始状态
@@ -259,7 +302,8 @@ class RequestEnvNoSim:
         self.invalid_action_times = 0
         self.success_request_list = []
         self.fail_request_list = []
-        self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list()
+        self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list(
+        )
         self.active_request_group_by_remaining_time_list_to_state()
         return self.state_record
 
@@ -280,7 +324,8 @@ class RequestEnvNoSim:
         more_provision_list = []
         for success_request in self.success_request_list:
             more_provision_list.append(
-                (success_request[RTL_INDEX] - success_request[WAIT_TIME_INDEX]) / success_request[RTL_INDEX])
+                (success_request[RTL_INDEX] - success_request[WAIT_TIME_INDEX])
+                / success_request[RTL_INDEX])
         return np.sum(more_provision_list)
 
     def get_success_request(self):

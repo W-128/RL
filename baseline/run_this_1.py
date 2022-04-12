@@ -4,8 +4,8 @@ from agent import RandomChoose, EDF, EDFSubmitThreshold
 from train_test import test
 import datetime
 import torch
-from common.utils import plot_waiting_time_and_require_time
-from common.utils import make_dir
+from my_common.utils import plot_waiting_time_and_require_time
+from my_common.utils import make_dir
 
 curr_path = os.path.dirname(os.path.abspath(__file__))  # 当前文件所在绝对路径
 curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")  # 获取当前时间
@@ -48,21 +48,26 @@ class EDFConfig:
 
 
 env = RequestEnvNoSim()
-
+env.action_need_softmax = False
 random_choose_cfg = RandomChooseConfig()
 make_dir(random_choose_cfg.result_path)  # 创建模型路径的文件夹
 agent = RandomChoose(env.action_dim)
-success_request, waiting_time_index, rtl_index = test(random_choose_cfg, env, agent)
-plot_waiting_time_and_require_time(success_request, waiting_time_index, rtl_index, random_choose_cfg)
+success_request, waiting_time_index, rtl_index = test(random_choose_cfg, env,
+                                                      agent)
+plot_waiting_time_and_require_time(success_request, waiting_time_index,
+                                   rtl_index, random_choose_cfg)
 
 edf_config = EDFConfig()
 make_dir(edf_config.result_path)  # 创建模型路径的文件夹
 agent = EDF(env.action_dim)
 success_request, waiting_time_index, rtl_index = test(edf_config, env, agent)
-plot_waiting_time_and_require_time(success_request, waiting_time_index, rtl_index, edf_config)
+plot_waiting_time_and_require_time(success_request, waiting_time_index,
+                                   rtl_index, edf_config)
 
 edf_submit_threshold_config = EDFSubmitThresholdConfig()
 make_dir(edf_submit_threshold_config.result_path)  # 创建模型路径的文件夹
 agent = EDFSubmitThreshold(env.action_dim)
-success_request, waiting_time_index, rtl_index = test(edf_submit_threshold_config, env, agent)
-plot_waiting_time_and_require_time(success_request, waiting_time_index, rtl_index, edf_submit_threshold_config)
+success_request, waiting_time_index, rtl_index = test(
+    edf_submit_threshold_config, env, agent)
+plot_waiting_time_and_require_time(success_request, waiting_time_index,
+                                   rtl_index, edf_submit_threshold_config)

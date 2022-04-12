@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import time
 import csv
-from common.utils import make_dir
-from common.get_data import get_arrive_time_request_dic
+from my_common.utils import make_dir
+from my_common.get_data import get_arrive_time_request_dic
 import os
 
 # t=1000ms
@@ -65,6 +65,7 @@ def SIM_ENV_USE_TIME_to_zero():
 
 
 class RequestEnv:
+
     def __init__(self):
         # [0,1,...,5,null]
         self.action_space = []
@@ -90,7 +91,8 @@ class RequestEnv:
         value=arriveTime为key的request_in_dic列表
         request_in_dic的形式为[request_id, arrive_time, rtl]
         '''
-        self.new_arrive_request_in_dic, self.arriveTime_request_dic = get_arrive_time_request_dic(ARRIVE_TIME_INDEX)
+        self.new_arrive_request_in_dic, self.arriveTime_request_dic = get_arrive_time_request_dic(
+            ARRIVE_TIME_INDEX)
         self.end_request_result_path = curr_path + '/success_request_list/' + curr_time + '/'
         make_dir(self.end_request_result_path)
 
@@ -123,16 +125,21 @@ class RequestEnv:
 
     def update_env(self):
         # remaining_time==0且还留在active_request_group_by_remaining_time_list中的请求此时失败
-        for active_request in self.active_request_group_by_remaining_time_list[0]:
+        for active_request in self.active_request_group_by_remaining_time_list[
+                0]:
             self.fail_request_list.append(list(active_request))
         self.active_request_group_by_remaining_time_list[0] = []
 
         # active_request_group_by_remaining_time_list 剩余时间要推移
-        for i in range(1, self.active_request_group_by_remaining_time_list.__len__()):
+        for i in range(
+                1, self.active_request_group_by_remaining_time_list.__len__()):
             self.active_request_group_by_remaining_time_list[i - 1] = []
-            for active_request in self.active_request_group_by_remaining_time_list[i]:
-                active_request[REMAINING_TIME_INDEX] = active_request[REMAINING_TIME_INDEX] - 1
-                self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
+            for active_request in self.active_request_group_by_remaining_time_list[
+                    i]:
+                active_request[REMAINING_TIME_INDEX] = active_request[
+                    REMAINING_TIME_INDEX] - 1
+                self.active_request_group_by_remaining_time_list[i - 1].append(
+                    list(active_request))
 
         episode_done = False
         # 与真实环境交互的话这里需要更改
@@ -148,7 +155,8 @@ class RequestEnv:
         for i in range(0, len(self.state_record) - 1):
             if self.state_record[i] != 0:
                 remaining_request_is_done = False
-        if t > np.max(list(self.arriveTime_request_dic.keys())) and remaining_request_is_done:
+        if t > np.max(list(self.arriveTime_request_dic.keys())
+                      ) and remaining_request_is_done:
             episode_done = True
         # time.sleep(FRESH_TIME)
         return episode_done
@@ -158,10 +166,15 @@ class RequestEnv:
         if action != self.action_space_dimension - 1:
             # 确保 action 有mask 不会选择队列为空的剩余时间队列
             # time_stamp = time.time()
-            submit_index = np.random.choice(self.active_request_group_by_remaining_time_list[action].__len__())
-            end_request = list(self.active_request_group_by_remaining_time_list[action][submit_index])
+            submit_index = np.random.choice(
+                self.active_request_group_by_remaining_time_list[action].
+                __len__())
+            end_request = list(
+                self.active_request_group_by_remaining_time_list[action]
+                [submit_index])
             # 把提交的任务从active_request_list中删除
-            del self.active_request_group_by_remaining_time_list[action][submit_index]
+            del self.active_request_group_by_remaining_time_list[action][
+                submit_index]
             end_request[WAIT_TIME_INDEX] = t - end_request[ARRIVE_TIME_INDEX]
             self.success_request_list.append(end_request)
             # 更新状态
@@ -212,7 +225,10 @@ class RequestEnv:
     def save_success_request(self):
         # success_request_list[request_id, arrive_time, rtl, wait_time]
         headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
-        with open(self.end_request_result_path + 'success_request_list' + str(self.episode) + '.csv', 'w', newline='')as f:
+        with open(self.end_request_result_path + 'success_request_list' +
+                  str(self.episode) + '.csv',
+                  'w',
+                  newline='') as f:
             f_csv = csv.writer(f)
             f_csv.writerow(headers)
             f_csv.writerows(self.success_request_list)
@@ -230,7 +246,9 @@ class RequestEnv:
                 request = list(request_in_dic)
                 # 刚加进缓冲时 remaining_time=rtl
                 request.append(request_in_dic[RTL_INDEX])
-                now_new_arrive_request_list[request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND].append(request)
+                now_new_arrive_request_list[request[REMAINING_TIME_INDEX] //
+                                            TIME_UNIT_IN_ON_SECOND].append(
+                                                request)
         return now_new_arrive_request_list
 
     #   初始状态
@@ -240,7 +258,8 @@ class RequestEnv:
         t_to_zero()
         self.success_request_list = []
         self.fail_request_list = []
-        self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list()
+        self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list(
+        )
         self.active_request_group_by_remaining_time_list_to_state()
         return self.state_record
 

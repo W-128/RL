@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import time
 import csv
-from common.utils import make_dir
+from my_common.utils import make_dir
 import os
 
 # t=100ms
@@ -74,19 +74,25 @@ request_in_dic的形式为[request_id, arrive_time, rtl]
 filename = 'concurrent_request_num.csv'
 data = pd.read_csv(filename, header=0)
 for i in range(0, len(data)):
-    request_in_dic = [data.loc[i, 'request_id'], data.loc[i, 'arrive_time'], data.loc[i, 'rtl']]
+    request_in_dic = [
+        data.loc[i, 'request_id'], data.loc[i, 'arrive_time'], data.loc[i,
+                                                                        'rtl']
+    ]
     NEW_ARRIVE_REQUEST_IN_DIC.append(request_in_dic)
 
 arriveTime_request_dic = {}
 for request_in_dic in NEW_ARRIVE_REQUEST_IN_DIC:
     if request_in_dic[ARRIVE_TIME_INDEX] in arriveTime_request_dic:
-        arriveTime_request_dic[request_in_dic[ARRIVE_TIME_INDEX]].append(request_in_dic)
+        arriveTime_request_dic[request_in_dic[ARRIVE_TIME_INDEX]].append(
+            request_in_dic)
     else:
         request_list = [request_in_dic]
-        arriveTime_request_dic[request_in_dic[ARRIVE_TIME_INDEX]] = request_list
+        arriveTime_request_dic[
+            request_in_dic[ARRIVE_TIME_INDEX]] = request_list
 
 
 class RequestEnv:
+
     def __init__(self):
         self.action_space = []
         for i in range(STATE_DIMENSION):
@@ -167,7 +173,10 @@ class RequestEnv:
     def save_success_request(self):
         # success_request_list[request_id, arrive_time, rtl, wait_time]
         headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
-        with open(self.end_request_result_path + 'success_request_list' + str(self.episode) + '.csv', 'w', newline='')as f:
+        with open(self.end_request_result_path + 'success_request_list' +
+                  str(self.episode) + '.csv',
+                  'w',
+                  newline='') as f:
             f_csv = csv.writer(f)
             f_csv.writerow(headers)
             f_csv.writerows(self.end_request_list)
@@ -183,19 +192,25 @@ class RequestEnv:
     def update_env(self):
         # active_request_group_by_remaining_time_list 剩余时间要推移
         for i in range(len(self.active_request_group_by_remaining_time_list)):
-            for j in range(len(self.active_request_group_by_remaining_time_list[i])):
+            for j in range(
+                    len(self.active_request_group_by_remaining_time_list[i])):
                 self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] = \
                     self.active_request_group_by_remaining_time_list[i][j][REMAINING_TIME_INDEX] - 1
 
         for i in range(len(self.active_request_group_by_remaining_time_list)):
-            for active_request in self.active_request_group_by_remaining_time_list[i][:]:
+            for active_request in self.active_request_group_by_remaining_time_list[
+                    i][:]:
                 # 过期请求
                 if active_request[REMAINING_TIME_INDEX] == 0:
                     self.fail_request_list.append(list(active_request))
-                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
-                if active_request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
-                    self.active_request_group_by_remaining_time_list[i - 1].append(list(active_request))
-                    self.active_request_group_by_remaining_time_list[i].remove(active_request)
+                    self.active_request_group_by_remaining_time_list[i].remove(
+                        active_request)
+                if active_request[
+                        REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND != i:
+                    self.active_request_group_by_remaining_time_list[
+                        i - 1].append(list(active_request))
+                    self.active_request_group_by_remaining_time_list[i].remove(
+                        active_request)
 
         episode_done = False
         # 与真实环境交互的话这里需要更改
@@ -211,7 +226,8 @@ class RequestEnv:
         for i in range(1, len(self.state_record)):
             if self.state_record[i] != 0:
                 remaining_request_is_done = False
-        if t > np.max(list(arriveTime_request_dic.keys())) and remaining_request_is_done:
+        if t > np.max(list(
+                arriveTime_request_dic.keys())) and remaining_request_is_done:
             episode_done = True
         # time.sleep(FRESH_TIME)
         return episode_done
@@ -224,10 +240,15 @@ class RequestEnv:
             todo
             选择在剩余时间(A-1,A]中最小的
             '''
-            submit_index = np.random.choice(self.active_request_group_by_remaining_time_list[action - 1].__len__())
-            end_request = list(self.active_request_group_by_remaining_time_list[action - 1][submit_index])
+            submit_index = np.random.choice(
+                self.active_request_group_by_remaining_time_list[action -
+                                                                 1].__len__())
+            end_request = list(
+                self.active_request_group_by_remaining_time_list[
+                    action - 1][submit_index])
             # 把提交的任务从active_request_list中删除
-            del self.active_request_group_by_remaining_time_list[action - 1][submit_index]
+            del self.active_request_group_by_remaining_time_list[
+                action - 1][submit_index]
             end_request[WAIT_TIME_INDEX] = t - end_request[ARRIVE_TIME_INDEX]
             self.end_request_list.append(end_request)
             self.state_record[action] = self.state_record[action] - 1
@@ -256,7 +277,9 @@ class RequestEnv:
                 request = list(request_in_dic)
                 # 刚加进缓冲时 remaining_time=rtl
                 request.append(request_in_dic[RTL_INDEX])
-                now_new_arrive_request_list[request[REMAINING_TIME_INDEX] // TIME_UNIT_IN_ON_SECOND].append(request)
+                now_new_arrive_request_list[request[REMAINING_TIME_INDEX] //
+                                            TIME_UNIT_IN_ON_SECOND].append(
+                                                request)
         t_add_one()
         return now_new_arrive_request_list
 
@@ -267,7 +290,8 @@ class RequestEnv:
         t_to_zero()
         self.end_request_list = []
         self.fail_request_list = []
-        self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list()
+        self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list(
+        )
         self.active_request_group_by_remaining_time_list_to_state()
         return self.state_record
 
