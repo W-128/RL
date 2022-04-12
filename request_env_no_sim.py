@@ -8,6 +8,8 @@ from common.utils import make_dir
 from common.get_data import get_arrive_time_request_dic
 import os
 import math
+import torch.nn as nn
+import torch
 
 # t=1000ms
 TIME_UNIT = 1
@@ -25,7 +27,6 @@ REMAINING_TIME_INDEX = 3
 WAIT_TIME_INDEX = 3
 
 FRESH_TIME = 1
-NEED_EVALUATE_ENV_CORRECT = True
 
 # t t的长度为TIME_UNIT
 t = 0
@@ -45,21 +46,26 @@ def t_to_zero():
 
 class RequestEnvNoSim:
     def __init__(self):
+        self.max_step = 2 ** 10
+        self.if_discrete = False
+        # action需要归一化转为概率
+        self.action_need_softmax = True
+        self.env_name = 'RequestEnvNoSim'
         # 状态向量的维数=rtl的级别个数
         # state=(剩余时间为0的请求个数,...,剩余时间为5的请求个数)
-        self.state_dimension = 6
+        self.state_dim = 6
         # [剩余时间为0s的请求列表,剩余时间为1s...,剩余时间为5s的请求列表]
         # active_request_group_by_remaining_time_list是中间变量，随时间推移会有remainingTime的改变
         self.active_request_group_by_remaining_time_list = []
-        for i in range(self.state_dimension):
+        for i in range(self.state_dim):
             self.active_request_group_by_remaining_time_list.append([])
         self.state_record = []
         # 动作空间维数 == 状态向量的维数+1
         # action=(从剩余时间为0的请求中提交的请求个数, 从剩余时间为1的请求中提交的请求个数,...,从剩余时间为5的请求中提交的请求个数,空提交的个数)
-        self.action_dimension = self.state_dimension + 1
+        self.action_dim = self.state_dim + 1
         # [0,1,...,5,null]
         self.action_list = []
-        for i in range(self.action_dimension - 1):
+        for i in range(self.action_dim - 1):
             self.action_list.append(str(i))
         self.action_list.append('null')
         self.success_request_list = []
@@ -67,8 +73,14 @@ class RequestEnvNoSim:
         self.episode = 0
         self.beta = 0.5
         self.c = -0.5
+        self.invalid_action_penalty = -0.5
         # 引擎能承受的单位时间最大并发量
         self.threshold = int(40 / TIME_UNIT_IN_ON_SECOND)
+        self.call_get_reward_times = 0
+        self.invalid_action_times = 0
+        self.need_evaluate_env_correct = False
+        # 测试阶段将该值置为true
+        self.invalid_action_optim = False
         '''
         arriveTime_request_dic:
         key=arriveTime
@@ -81,17 +93,24 @@ class RequestEnvNoSim:
 
     # 返回奖励值和下一个状态
     def step(self, action):
-
+        # action归一化转为概率在转为数量
+        if self.action_need_softmax:
+            action = torch.Tensor(action)
+            action = nn.Softmax(dim=0)(action)
+            action = list(action.detach().cpu().numpy())
+            for index in range(len(action) - 1):
+                action[index] = int(round(action[index] * self.threshold, 0))
+            action[-1] = self.threshold - sum(action[:-1])
         # debug
         # print('action: ' + str(action))
         # print('t:' + str(t))
 
-        reward = self.get_reward(action)
+        reward, edited_action = self.get_reward(action)
         # 环境更新
-        done = self.update_env(action)
+        done = self.update_env(edited_action)
 
         # 验证环境正确性
-        if done and NEED_EVALUATE_ENV_CORRECT:
+        if done and self.need_evaluate_env_correct:
             print('环境正确性:' + str(self.is_correct()))
 
         # debug
@@ -99,11 +118,12 @@ class RequestEnvNoSim:
 
         return self.state_record, reward, done
 
+    # 确保action合法
     def update_env(self, action):
         # submit request
         # action[提交剩余时间为0的请求数量, 提交剩余时间为1的请求数量, ,不提交的数量]
         # 确保 action 有mask 不会选择队列为空的剩余时间队列
-        for remaining_time in range(self.action_dimension - 1):
+        for remaining_time in range(self.action_dim - 1):
             for j in range(action[remaining_time]):
                 # time_stamp = time.time()
                 submit_index = np.random.choice(
@@ -148,23 +168,41 @@ class RequestEnvNoSim:
         return episode_done
 
     def get_reward(self, action):
+        self.call_get_reward_times += 1
+        penalty3 = 0
+        edited_action = list(action)
+        is_valid_action = False
+        # 判断是否是违法动作
+        for index in range(len(action) - 1):
+            if action[index] > len(self.active_request_group_by_remaining_time_list[index]):
+                is_valid_action = True
+                # debug
+                self.invalid_action_times += 1
+                break
+        # 不可行动作置为最接近invalid_action的合法动作
+        if is_valid_action:
+            for index in range(len(action) - 1):
+                if action[index] > len(self.active_request_group_by_remaining_time_list[index]):
+                    edited_action[-1] += len(self.active_request_group_by_remaining_time_list[index]) - action[index]
+                    edited_action[index] = len(self.active_request_group_by_remaining_time_list[index])
+            more_submit_sum = edited_action[-1] - action[-1]
+            penalty3 = (more_submit_sum / self.threshold) * self.invalid_action_penalty
         # action[提交剩余时间为0的请求数量, 提交剩余时间为1的请求数量, ,不提交的数量]
         reward_list = []
-        for i in range(len(action) - 1):
-            reward_list.append(action[i] * np.power(self.beta, i))
+        for i in range(len(edited_action) - 1):
+            reward_list.append(edited_action[i] * np.power(self.beta, i))
         reward = np.sum(reward_list) / self.threshold
         fail_num = 0
-        if action[0] < len(self.active_request_group_by_remaining_time_list[0]):
-            fail_num = len(self.active_request_group_by_remaining_time_list[0]) - action[0]
+        if edited_action[0] < len(self.active_request_group_by_remaining_time_list[0]):
+            fail_num = len(self.active_request_group_by_remaining_time_list[0]) - edited_action[0]
         penalty1 = self.c * (min(fail_num, self.threshold) / self.threshold)
-
-        return reward + penalty1
+        return reward + penalty1 + penalty3, edited_action
 
     # request_list -> state
     def active_request_group_by_remaining_time_list_to_state(self):
         state = []
         for active_request_group_by_remaining_time in self.active_request_group_by_remaining_time_list:
-            state.append(len(active_request_group_by_remaining_time))
+            state.append(len(active_request_group_by_remaining_time) + 0.0)
         self.state_record = state
 
     def is_correct(self):
@@ -190,18 +228,18 @@ class RequestEnvNoSim:
         all_request_num = all_request.__len__()
         return self.success_request_list.__len__() / all_request_num
 
-    def save_success_request(self):
-        # success_request_list[request_id, arrive_time, rtl, wait_time]
-        headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
-        with open(self.end_request_result_path + 'success_request_list' + str(self.episode) + '.csv', 'w', newline='')as f:
-            f_csv = csv.writer(f)
-            f_csv.writerow(headers)
-            f_csv.writerows(self.success_request_list)
+    # def save_success_request(self):
+    #     # success_request_list[request_id, arrive_time, rtl, wait_time]
+    #     headers = ['request_id', 'arrive_time', 'rtl', 'wait_time']
+    #     with open(self.end_request_result_path + 'success_request_list' + str(self.episode) + '.csv', 'w', newline='')as f:
+    #         f_csv = csv.writer(f)
+    #         f_csv.writerow(headers)
+    #         f_csv.writerows(self.success_request_list)
 
     # 现在用t来表示，真实环境中收集[t-1,t)到来的请求直接给出
     def get_new_arrive_request_list(self):
         now_new_arrive_request_list = []
-        for i in range(self.state_dimension):
+        for i in range(self.state_dim):
             now_new_arrive_request_list.append([])
         if t in self.arriveTime_request_dic:
             for request_in_dic in self.arriveTime_request_dic[t]:
@@ -215,9 +253,10 @@ class RequestEnvNoSim:
         return now_new_arrive_request_list
 
     #   初始状态
-    def reset(self, episode):
-        self.episode = episode
+    def reset(self):
         t_to_zero()
+        self.call_get_reward_times = 0
+        self.invalid_action_times = 0
         self.success_request_list = []
         self.fail_request_list = []
         self.active_request_group_by_remaining_time_list = self.get_new_arrive_request_list()
@@ -232,7 +271,7 @@ class RequestEnvNoSim:
 
     def get_not_avail_actions(self):
         not_avail_actions = []
-        for i in range(self.state_dimension):
+        for i in range(self.state_dim):
             if self.state_record[i] == 0:
                 not_avail_actions.append(i)
         return not_avail_actions

@@ -12,7 +12,7 @@ df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
 df = df.groupby('period').sum()
 # similar to paper: Stochastic Resource Provisioning for
 #                   Containerized Multi-Tier Web Services in Clouds
-sub_df = df['1998-06-30 08:00:01':'1998-07-10 08:00:00']
+sub_df = df['1998-06-30 08:00:01':'1998-07-01 08:00:00']
 
 sns.set()
 

@@ -145,9 +145,11 @@ class AgentPPO:
         last_done = 0
         for i in range(target_step):
             action, noise = self.select_action(state)
-            next_state, reward, done, _ = env.step(np.tanh(action))
+            next_state, reward, done = env.step(np.tanh(action))
             trajectory_temp.append((state, reward, done, action, noise))
             if done:
+                # print(
+                #     'episode ' + str(i) + ':{:.1f}%'.format(env.invalid_action_times / env.call_get_reward_times * 100))
                 state = env.reset()
                 last_done = i
             else:
@@ -464,7 +466,7 @@ def get_episode_return_and_step(env, act, device):
         if if_discrete:
             a_tensor = a_tensor.argmax(dim=1)
         action = a_tensor.detach().cpu().numpy()[0]  # not need detach(), because with torch.no_grad() outside
-        state, reward, done, _ = env.step(action)
+        state, reward, done = env.step(action)
         episode_return += reward
         if done:
             break
@@ -496,7 +498,8 @@ def get_gym_env_info(env, if_print):
     env_name = env.unwrapped.spec.id if env_name is None else None
 
     if isinstance(env.observation_space, gym.spaces.discrete.Discrete):
-        raise RuntimeError("| <class 'gym.spaces.discrete.Discrete'> does not support environment with discrete observation (state) space.")
+        raise RuntimeError(
+            "| <class 'gym.spaces.discrete.Discrete'> does not support environment with discrete observation (state) space.")
     state_shape = env.observation_space.shape
     state_dim = state_shape[0] if len(state_shape) == 1 else state_shape  # sometimes state_dim is a list
 
@@ -540,7 +543,7 @@ def demo_continuous_action():
     args.agent.cri_target = True
     args.visible_gpu = '1'
 
-    if_train_pendulum = 1
+    if_train_pendulum = 0
     if if_train_pendulum:
         "TotalStep: 4e5, TargetReward: -200, UsedTime: 400s"
         args.env = PreprocessEnv(env=gym.make('Pendulum-v1'))  # env='Pendulum-v0' is OK.
@@ -565,6 +568,15 @@ def demo_continuous_action():
         args.env = PreprocessEnv(env=gym.make('BipedalWalker-v3'))
         args.gamma = 0.98
         args.if_per_or_gae = True
+
+    if_train_request_env_no_sim = 1
+    if if_train_request_env_no_sim:
+        args.env = RequestEnvNoSim()
+        args.env.invalid_action_optim = False
+        args.gamma = 0.98
+        args.if_per_or_gae = True
+        args.env.target_return = 373  # set target_reward manually for env 'Pendulum-v0'
+        args.repeat_times = 2 ** 5
 
     train_and_evaluate(args)
 
@@ -591,6 +603,35 @@ def demo_discrete_action():
     train_and_evaluate(args)
 
 
-if __name__ == '__main__':
-    demo_continuous_action()
-    # demo_discrete_action()
+def evaluate_agent():
+    args = Arguments()
+    args.env = RequestEnvNoSim()
+    args.agent = AgentPPO()
+    env = args.env
+    env.invalid_action_optim = True
+    args.agent.init(args.net_dim, env.state_dim, env.action_dim)
+    actor = args.agent.act
+    actor.load_state_dict(torch.load('D:\\workspace\\PycharmProjects\\RL\\AgentPPO_RequestEnvNoSim_1\\actor.pth'))
+    cumulative_rewards = get_cumulative_rewards(env, actor, args)
+    print(cumulative_rewards)
+
+
+def get_cumulative_rewards(env, act, args):
+    max_step = env.max_step
+    if_discrete = env.if_discrete
+    state = env.reset()
+    cumulative_returns = 0.0  # sum of rewards in an episode
+    for episode_step in range(max_step):
+        s_tensor = torch.as_tensor((state,), dtype=torch.float32, device=args.agent.device)
+        a_tensor = act(s_tensor)
+        if if_discrete:
+            a_tensor = a_tensor.argmax(dim=1)
+        action = a_tensor.detach().cpu().numpy()[0]  # not need detach(), because using torch.no_grad() outside
+        state, reward, done = env.step(action)
+        cumulative_returns += reward
+        if done:
+            break
+    print('成功率：{:.1f}%'.format(env.get_success_rate() * 100))
+    print('超供量：{:.1f}'.format(env.get_more_provision()))
+    print('完成测试！')
+    return cumulative_returns

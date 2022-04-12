@@ -10,7 +10,7 @@ def get_arrive_time_request_dic(arrive_time_index):
     request_in_dic的形式为[request_id, arrive_time, rtl]
     '''
     new_arrive_request_in_dic = []
-    filename = '../common/concurrent_request_num.csv'
+    filename = 'D:\\workspace\\PycharmProjects\\RL\\common\\concurrent_request_num.csv'
     data = pd.read_csv(filename, header=0)
     for i in range(0, len(data)):
         request_in_dic = [data.loc[i, 'request_id'], data.loc[i, 'arrive_time'], data.loc[i, 'rtl']]
